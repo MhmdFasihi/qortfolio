@@ -1,0 +1,101 @@
+# Bitcoin Options Analytics Platform - Conda Environment
+# Usage: conda env create -f environment.yml
+# Activate: conda activate btc-options-analytics
+
+name: btc-options-analytics
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Core Python
+  - python=3.11
+  
+  # Core Data Processing & Analysis
+  - pandas>=2.0.0
+  - numpy>=1.24.0
+  - scipy>=1.10.0
+  
+  # Financial Mathematics
+  - pip
+  - pip:
+    # Professional Options Pricing Libraries
+    - py_vollib>=1.0.1              # Black-Scholes and Greeks
+    - QuantLib-Python>=1.17,<1.32   # Advanced quantitative finance (compatible version)
+    - mibian>=0.1.3                 # Alternative options library
+    
+    # Time Series & Financial Data
+    - yfinance>=0.2.18              # Market data
+    - pandas-market-calendars>=4.1  # Trading calendars
+    
+  # API & Web Requests
+  - requests>=2.31.0
+  - aiohttp>=3.8.0                  # Async HTTP client
+  - urllib3>=1.26.0
+  
+  # Visualization & Dashboards
+  - matplotlib>=3.7.0
+  - seaborn>=0.12.0
+  - plotly>=5.17.0
+  - streamlit>=1.28.0
+  - bokeh>=3.2.0                    # Interactive plotting
+  
+  # Development & Testing
+  - pytest>=7.4.0
+  - pytest-cov>=4.1.0
+  - pytest-asyncio>=0.21.0         # Async testing
+  - black>=23.7.0                  # Code formatting
+  - flake8>=6.0.0                  # Linting
+  - mypy>=1.5.0                    # Type checking
+  - pre-commit>=3.3.0              # Git hooks
+  
+  # Database & Caching
+  - sqlite>=3.42.0                 # Local database
+  - redis-py>=4.6.0                # Caching
+  - sqlalchemy>=2.0.0              # ORM
+  
+  # Performance & Optimization
+  - numba>=0.57.0                  # JIT compilation
+  - joblib>=1.3.0                  # Parallel processing
+  - cython>=3.0.0                  # Performance optimization
+  
+  # Configuration & Utilities
+  - pyyaml>=6.0
+  - python-dotenv>=1.0.0
+  - click>=8.1.0                   # CLI interface
+  - rich>=13.4.0                   # Beautiful terminal output
+  - tqdm>=4.65.0                   # Progress bars
+  
+  # Jupyter & Research
+  - jupyter>=1.0.0
+  - jupyterlab>=4.0.0
+  - ipywidgets>=8.0.0
+  - notebook>=7.0.0
+  
+  # Documentation
+  - sphinx>=7.1.0
+  - sphinx-rtd-theme>=1.3.0
+  
+  # Date & Time Handling
+  - python-dateutil>=2.8.0
+  - pytz>=2023.3
+  
+  # Additional Crypto-specific (via pip)
+  - pip:
+    - ccxt>=4.0.0                   # Multi-exchange connectivity
+    - python-binance>=1.0.19       # Binance API
+    - websocket-client>=1.6.0      # WebSocket support
+    - cryptofeed>=2.4.0             # Real-time crypto data
+
+# Development Variables
+variables:
+  PYTHONPATH: ./src
+  ENVIRONMENT: development
+  LOG_LEVEL: INFO
+
+# Post-installation commands
+# Run after environment creation:
+# conda activate btc-options-analytics
+# pre-commit install
+# python -c "import nltk; nltk.download('punkt')" (if using NLP features)
