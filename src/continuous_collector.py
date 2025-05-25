@@ -29,21 +29,17 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import json
-import schedule
+try:
+    import schedule
+except ImportError:
+    schedule = None
 from dataclasses import dataclass, field
 from enum import Enum
 import traceback
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-try:
-    from src.data.collectors import DeribitCollector, DataCollectionError
-    from src.utils.time_utils import datetime_to_timestamp
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("Make sure you're running this from the project root directory")
-    sys.exit(1)
+# Import from our modules
+from .data.collectors import DeribitCollector, DataCollectionError
+from .utils.time_utils import datetime_to_timestamp
 
 class CollectorStatus(Enum):
     """Status states for the collector."""
@@ -113,6 +109,9 @@ class ContinuousDataCollector:
             restart_delay_minutes: Minutes to wait before restart after failure
             enable_scheduling: Whether to use scheduler (vs manual control)
         """
+        if schedule is None:
+            raise ImportError("schedule package required. Install with: pip install schedule")
+            
         self.currencies = currencies or ['BTC', 'ETH']
         self.collection_interval = collection_interval_minutes
         self.lookback_hours = lookback_hours
@@ -529,7 +528,6 @@ def main():
         
         print("🚀 Continuous collector started!")
         print("Press Ctrl+C to stop gracefully")
-        print("Use --test flag to run a single test collection")
         
         # Keep main thread alive and provide status updates
         while collector.is_running:

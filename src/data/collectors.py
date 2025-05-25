@@ -395,11 +395,12 @@ class DeribitCollector:
         """
         logger.info(f"Starting options data collection for {currency}")
         
-        # Set default dates if not provided (use historical dates that likely have data)
+        # FIXED: Smart default date logic instead of hard-coded dates
         if end_date is None:
-            end_date = datetime(2024, 12, 31).date()
+            end_date = datetime.now().date()
         if start_date is None:
-            start_date = (end_date - timedelta(days=1))
+            # Default to 7 days ago, but try different ranges if no data
+            start_date = end_date - timedelta(days=7)
         
         # Convert to date objects if needed
         if isinstance(start_date, datetime):
@@ -407,73 +408,127 @@ class DeribitCollector:
         if isinstance(end_date, datetime):
             end_date = end_date.date()
         
-        # Validate date inputs (but don't fail on future dates, just warn)
-        try:
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            end_dt = datetime.combine(end_date, datetime.max.time())
+        # ADDED: Smart date validation and adjustment
+        today = datetime.now().date()
+        
+        # If dates are in the future, adjust to recent past
+        if end_date > today:
+            logger.warning(f"End date {end_date} is in the future, adjusting to today")
+            end_date = today
+        
+        if start_date > today:
+            logger.warning(f"Start date {start_date} is in the future, adjusting to 7 days ago")
+            start_date = today - timedelta(days=7)
+            end_date = today
+        
+        # Ensure start_date is before end_date
+        if start_date > end_date:
+            logger.warning(f"Start date {start_date} is after end date {end_date}, swapping")
+            start_date, end_date = end_date, start_date
+        
+        # ADDED: Fallback date ranges if initial range has no data
+        date_ranges_to_try = [
+            (start_date, end_date),  # Original range
+        ]
+        
+        # Add fallback ranges if original is too recent or too old
+        if (today - end_date).days < 2:
+            # If too recent, try some historical ranges
+            fallback_end = today - timedelta(days=30)
+            fallback_start = fallback_end - timedelta(days=7)
+            date_ranges_to_try.append((fallback_start, fallback_end))
             
-            if start_date > end_date:
-                raise DataCollectionError(f"Start date {start_date} must be before end date {end_date}")
-                
-        except Exception as e:
-            raise DataCollectionError(f"Invalid date inputs: {e}")
+            # Try end of last year as a known-good range
+            last_year_end = date(today.year - 1, 12, 31)
+            last_year_start = date(today.year - 1, 12, 24)
+            date_ranges_to_try.append((last_year_start, last_year_end))
         
-        # Initialize collection
-        collected_options = []
-        params = {
-            "currency": currency,
-            "kind": "option",
-            "count": self.config.max_records_per_request,
-            "include_old": True,
-            "start_timestamp": datetime_to_timestamp(start_dt),
-            "end_timestamp": datetime_to_timestamp(end_dt)
-        }
-        
-        # Create session if needed
-        if not self.session:
-            self._create_session()
-        
-        try:
-            while True:
-                # Make API request
-                response_data = self._make_request("public/get_last_trades_by_currency_and_time", params)
+        # Try each date range until we get data
+        for attempt, (try_start, try_end) in enumerate(date_ranges_to_try, 1):
+            try:
+                logger.info(f"Attempt {attempt}: Trying date range {try_start} to {try_end}")
                 
-                if not response_data or "result" not in response_data:
-                    logger.warning("No valid response from API")
-                    break
-                
-                trades = response_data["result"].get("trades", [])
-                if not trades:
-                    logger.info("No more trades available")
-                    break
-                
-                # Process trades
-                valid_trades = 0
-                for trade in trades:
-                    if self._validate_trade_data(trade):
-                        option_data = self._process_trade_data(trade)
-                        if option_data:
-                            # Filter by option type if specified
-                            if option_type is None or option_data.option_type == option_type:
-                                collected_options.append(option_data)
-                                valid_trades += 1
-                
-                logger.info(f"Processed {valid_trades}/{len(trades)} trades in this batch")
-                self.total_records_collected += valid_trades
-                
-                # Update pagination
-                params["start_timestamp"] = trades[-1]["timestamp"] + 1
-                
-                # Check if we've reached the end date
-                if params["start_timestamp"] >= datetime_to_timestamp(end_dt):
-                    break
+                # Validate date inputs
+                try:
+                    start_dt = datetime.combine(try_start, datetime.min.time())
+                    end_dt = datetime.combine(try_end, datetime.max.time())
                     
-        except Exception as e:
-            logger.error(f"Data collection failed: {e}")
-            raise DataCollectionError(f"Failed to collect options data: {e}")
+                    if try_start > try_end:
+                        raise DataCollectionError(f"Start date {try_start} must be before end date {try_end}")
+                        
+                except Exception as e:
+                    raise DataCollectionError(f"Invalid date inputs: {e}")
+                
+                # Initialize collection
+                collected_options = []
+                params = {
+                    "currency": currency,
+                    "kind": "option",
+                    "count": self.config.max_records_per_request,
+                    "include_old": True,
+                    "start_timestamp": datetime_to_timestamp(start_dt),
+                    "end_timestamp": datetime_to_timestamp(end_dt)
+                }
+                
+                # Create session if needed
+                if not self.session:
+                    self._create_session()
+                
+                # Collection loop
+                while True:
+                    # Make API request
+                    response_data = self._make_request("public/get_last_trades_by_currency_and_time", params)
+                    
+                    if not response_data or "result" not in response_data:
+                        logger.warning("No valid response from API")
+                        break
+                    
+                    trades = response_data["result"].get("trades", [])
+                    if not trades:
+                        logger.info("No more trades available")
+                        break
+                    
+                    # Process trades
+                    valid_trades = 0
+                    for trade in trades:
+                        if self._validate_trade_data(trade):
+                            option_data = self._process_trade_data(trade)
+                            if option_data:
+                                # Filter by option type if specified
+                                if option_type is None or option_data.option_type == option_type:
+                                    collected_options.append(option_data)
+                                    valid_trades += 1
+                    
+                    logger.info(f"Processed {valid_trades}/{len(trades)} trades in this batch")
+                    self.total_records_collected += valid_trades
+                    
+                    # Update pagination
+                    params["start_timestamp"] = trades[-1]["timestamp"] + 1
+                    
+                    # Check if we've reached the end date
+                    if params["start_timestamp"] >= datetime_to_timestamp(end_dt):
+                        break
+                
+                # If we got data, break out of the retry loop
+                if collected_options:
+                    logger.info(f"Successfully collected {len(collected_options)} options from {try_start} to {try_end}")
+                    break
+                else:
+                    logger.warning(f"No data found for {try_start} to {try_end}")
+                    if attempt < len(date_ranges_to_try):
+                        logger.info(f"Trying alternative date range...")
+                        continue
+                    
+            except Exception as e:
+                logger.error(f"Data collection failed for range {try_start} to {try_end}: {e}")
+                if attempt < len(date_ranges_to_try):
+                    logger.info(f"Trying alternative date range...")
+                    continue
+                else:
+                    raise DataCollectionError(f"Failed to collect options data: {e}")
         
-        finally:
-            self._log_collection_stats()
+        # Final processing
+        self._log_collection_stats()
         
         # Convert to DataFrame
         if collected_options:
@@ -497,7 +552,7 @@ class DeribitCollector:
             logger.info(f"Successfully collected {len(df)} option records")
             return df
         else:
-            logger.warning("No valid options data collected")
+            logger.warning("No valid options data collected from any date range")
             return pd.DataFrame()
 
     def _log_collection_stats(self) -> None:

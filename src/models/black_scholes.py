@@ -101,7 +101,7 @@ class BlackScholesModel:
 
     def _calculate_d1_d2(self, params: OptionParameters) -> Tuple[float, float]:
         """
-        Calculate d1 and d2 parameters for Black-Scholes formula.
+        Calculate d1 and d2 parameters for Black-Scholes formula with improved numerical stability.
         
         Args:
             params: Option parameters
@@ -117,9 +117,32 @@ class BlackScholesModel:
             r = params.risk_free_rate
             q = params.dividend_yield
 
-            # Standard Black-Scholes d1 calculation
-            d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-            d2 = d1 - sigma * np.sqrt(T)
+            # IMPROVED: Handle edge cases better
+            if T <= 0:
+                raise BlackScholesError("Time to expiry must be positive")
+            if sigma <= 0:
+                raise BlackScholesError("Volatility must be positive")
+            if S <= 0 or K <= 0:
+                raise BlackScholesError("Prices must be positive")
+            
+            # Calculate sigma * sqrt(T) once for efficiency and stability
+            sigma_sqrt_t = sigma * np.sqrt(T)
+            
+            # Check for very small sigma*sqrt(T) which could cause numerical issues
+            if sigma_sqrt_t < 1e-8:
+                logger.warning(f"Very small sigma*sqrt(T): {sigma_sqrt_t}, using minimum value")
+                sigma_sqrt_t = 1e-8
+            
+            # Standard Black-Scholes d1 calculation with improved numerical stability
+            log_s_k = np.log(S / K)
+            drift_term = (r - q + 0.5 * sigma**2) * T
+            
+            d1 = (log_s_k + drift_term) / sigma_sqrt_t
+            d2 = d1 - sigma_sqrt_t
+            
+            # ADDED: Check for extreme values that might cause issues
+            if abs(d1) > 10 or abs(d2) > 10:
+                logger.warning(f"Extreme d1/d2 values: d1={d1:.4f}, d2={d2:.4f}")
             
             return d1, d2
         
@@ -282,6 +305,111 @@ class BlackScholesModel:
         
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
+        
+        # FIXED: Improved time handling with better edge cases
+        def calculate_row_greeks(row):
+            try:
+                # Create option parameters with improved time handling
+                option_type = OptionType.CALL if str(row['option_type']).lower() in ['call', 'c'] else OptionType.PUT
+                
+                # IMPROVED: Better minimum time handling
+                raw_time = float(row['time_to_expiry'])
+                
+                # Handle different time edge cases
+                if raw_time <= 0:
+                    # Expired options - use very small time for numerical stability
+                    time_to_expiry = 1 / (365.25 * 24 * 60)  # 1 minute in years
+                    logger.debug(f"Expired option detected, using minimum time: {time_to_expiry}")
+                elif raw_time < 1 / (365.25 * 24):  # Less than 1 day
+                    # Very short-term options - use at least 1 hour
+                    time_to_expiry = max(raw_time, 1 / (365.25 * 24))
+                    if time_to_expiry != raw_time:
+                        logger.debug(f"Very short time adjusted: {raw_time} -> {time_to_expiry}")
+                else:
+                    # Normal case
+                    time_to_expiry = raw_time
+                
+                # IMPROVED: Better volatility handling
+                volatility = float(row['implied_volatility'])
+                if volatility <= 0:
+                    logger.warning(f"Non-positive volatility {volatility}, using minimum 1%")
+                    volatility = 0.01  # 1% minimum
+                elif volatility > 10:  # 1000%
+                    logger.warning(f"Extremely high volatility {volatility}, capping at 1000%")
+                    volatility = 10.0
+                
+                # IMPROVED: Better price handling
+                spot_price = float(row['spot_price'])
+                strike_price = float(row['strike_price'])
+                
+                if spot_price <= 0:
+                    raise ValueError(f"Invalid spot price: {spot_price}")
+                if strike_price <= 0:
+                    raise ValueError(f"Invalid strike price: {strike_price}")
+                
+                params = OptionParameters(
+                    spot_price=spot_price,
+                    strike_price=strike_price,
+                    time_to_expiry=time_to_expiry,
+                    volatility=volatility,
+                    risk_free_rate=self.default_risk_free_rate,
+                    option_type=option_type
+                )
+                
+                greeks = self.calculate_greeks(params)
+                
+                return pd.Series({
+                    'delta': greeks.delta,
+                    'gamma': greeks.gamma,
+                    'theta': greeks.theta,
+                    'vega': greeks.vega,
+                    'rho': greeks.rho,
+                    'bs_price': greeks.option_price
+                })
+                
+            except Exception as e:
+                logger.warning(f"Greeks calculation failed for row: {e}")
+                return pd.Series({
+                    'delta': np.nan,
+                    'gamma': np.nan,
+                    'theta': np.nan,
+                    'vega': np.nan,
+                    'rho': np.nan,
+                    'bs_price': np.nan
+                })
+        
+        # Calculate Greeks for all rows
+        greeks_df = df_copy.apply(calculate_row_greeks, axis=1)
+        
+        # Combine with original data
+        result_df = pd.concat([df, greeks_df], axis=1)
+        
+        # ADDED: Data quality checks and reporting
+        valid_calculations = greeks_df['delta'].notna().sum()
+        invalid_calculations = len(df) - valid_calculations
+        
+        # Report any issues
+        if invalid_calculations > 0:
+            logger.warning(f"{invalid_calculations} options had calculation issues")
+            
+            # Check for common issues
+            zero_time_count = (df_copy['time_to_expiry'] <= 0).sum()
+            if zero_time_count > 0:
+                logger.warning(f"{zero_time_count} options had zero/negative time to expiry")
+            
+            zero_vol_count = (df_copy['implied_volatility'] <= 0).sum()
+            if zero_vol_count > 0:
+                logger.warning(f"{zero_vol_count} options had zero/negative volatility")
+        
+        # Log success statistics
+        logger.info(f"✅ Successfully calculated Greeks for {valid_calculations}/{len(df)} options")
+        if valid_calculations > 0:
+            # Log some statistics about the Greeks
+            mean_delta = result_df['delta'].mean()
+            mean_gamma = result_df['gamma'].mean()
+            logger.info(f"   Average Delta: {mean_delta:.4f}, Average Gamma: {mean_gamma:.6f}")
+        
+        return result_df
         
         # Apply Greeks calculation to each row
         def calculate_row_greeks(row):
