@@ -1,0 +1,24 @@
+{
+  "status": "stopping",
+  "health": "healthy",
+  "uptime_hours": 0.016789049444444443,
+  "currencies": {
+    "BTC": {
+      "total_runs": 1,
+      "success_rate": 100.0,
+      "total_records": 0,
+      "consecutive_failures": 0,
+      "last_success": null
+    },
+    "ETH": {
+      "total_runs": 1,
+      "success_rate": 100.0,
+      "total_records": 0,
+      "consecutive_failures": 0,
+      "last_success": null
+    }
+  },
+  "is_running": false,
+  "should_stop": true,
+  "last_updated": "2025-05-26T02:57:06.534930"
+}

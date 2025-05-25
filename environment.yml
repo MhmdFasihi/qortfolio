@@ -66,6 +66,7 @@ dependencies:
   - click>=8.1.0                   # CLI interface
   - rich>=13.4.0                   # Beautiful terminal output
   - tqdm>=4.65.0                   # Progress bars
+  - schedule>=1.2.0                # Task scheduling
   
   # Jupyter & Research
   - jupyter>=1.0.0
