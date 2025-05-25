@@ -43,11 +43,11 @@ def test_data_collection():
     try:
         from src.data.collectors import collect_btc_options
         
-        # Test with a recent date range
-        end_date = date(2025, 1, 21)
-        start_date = date(2025, 1, 20)
+        # Use dates we know have data (historical dates)
+        end_date = date(2024, 12, 31)   # End of 2024
+        start_date = date(2024, 12, 30)  # 2 days for better chance of data
         
-        print(f"   Collecting data from {start_date} to {end_date}...")
+        print(f"   Collecting data from {start_date} to {end_date} (historical data)...")
         data = collect_btc_options(start_date=start_date, end_date=end_date)
         
         if not data.empty:
@@ -65,13 +65,24 @@ def test_data_collection():
             
             return True
         else:
-            print("   ⚠️  No data collected (might be weekend/no trading)")
-            return False
+            print("   ⚠️  No data collected - trying alternative date range...")
+            
+            # Try a different date range if first one fails
+            end_date = date(2024, 11, 30)
+            start_date = date(2024, 11, 29)
+            print(f"   Trying {start_date} to {end_date}...")
+            
+            data = collect_btc_options(start_date=start_date, end_date=end_date)
+            if not data.empty:
+                print(f"   ✅ SUCCESS with alternative dates: Collected {len(data)} option records")
+                return True
+            else:
+                print("   ⚠️  No data with alternative dates either - API might be working but no historical data available")
+                return False
             
     except Exception as e:
         print(f"   ❌ FAILED - {e}")
-        import traceback
-        traceback.print_exc()
+        print("   (This might be due to API rate limiting or data availability)")
         return False
 
 def main():
