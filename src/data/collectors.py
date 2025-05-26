@@ -13,6 +13,7 @@ Key Features:
 - Caching for performance
 - Rate limiting and connection pooling
 - Structured logging and monitoring
+- Integration with asset discovery system
 """
 
 import asyncio
@@ -35,6 +36,9 @@ from ..utils.time_utils import (
     validate_time_inputs,
     TimeCalculationError
 )
+
+# Import asset configuration
+from ..config.assets import get_default_currencies, is_currency_supported, get_assets_config
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -99,6 +103,7 @@ class DeribitCollector:
     
     This class provides robust, production-ready data collection from Deribit API
     with comprehensive error handling, rate limiting, and data validation.
+    Integrated with asset discovery system for dynamic currency support.
     """
     
     def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
@@ -126,7 +131,47 @@ class DeribitCollector:
         self.total_records_collected = 0
         self.errors_encountered = 0
         
-        logger.info("DeribitCollector initialized")
+        # Load supported currencies from asset discovery
+        self._load_supported_currencies()
+        
+        logger.info("DeribitCollector initialized with asset discovery integration")
+
+    def _load_supported_currencies(self):
+        """Load supported currencies from asset discovery system."""
+        try:
+            self.supported_currencies = get_default_currencies()
+            asset_config = get_assets_config()
+            self.all_supported_currencies = asset_config.get_options_enabled_currencies()
+            
+            logger.info(f"Loaded {len(self.supported_currencies)} default currencies: {self.supported_currencies}")
+            logger.info(f"Total options-enabled currencies: {len(self.all_supported_currencies)}")
+            
+        except Exception as e:
+            logger.warning(f"Could not load currencies from asset discovery: {e}")
+            # Fallback to hardcoded defaults
+            self.supported_currencies = ['BTC', 'ETH']
+            self.all_supported_currencies = ['BTC', 'ETH', 'USDC']
+
+    def get_supported_currencies(self) -> List[str]:
+        """
+        Get list of supported currencies for options trading.
+        
+        Returns:
+            List of supported currency symbols
+        """
+        return self.all_supported_currencies.copy()
+
+    def is_currency_supported(self, currency: str) -> bool:
+        """
+        Check if a currency is supported for options trading.
+        
+        Args:
+            currency: Currency symbol to check
+            
+        Returns:
+            True if currency is supported
+        """
+        return is_currency_supported(currency)
 
     def __enter__(self):
         """Context manager entry."""
@@ -373,7 +418,7 @@ class DeribitCollector:
 
     def collect_options_data(
         self,
-        currency: str = "BTC",
+        currency: str = None,
         start_date: Union[date, datetime] = None,
         end_date: Union[date, datetime] = None,
         option_type: Optional[OptionType] = None
@@ -383,9 +428,10 @@ class DeribitCollector:
         
         This method replaces the original option_data() method with professional
         error handling, data validation, and fixed time calculations.
+        Now integrated with asset discovery system.
         
         Args:
-            currency: Currency to collect (default: BTC)
+            currency: Currency to collect (auto-selected from asset discovery if None)
             start_date: Start date for data collection
             end_date: End date for data collection  
             option_type: Filter by option type (calls, puts, or both)
@@ -393,6 +439,15 @@ class DeribitCollector:
         Returns:
             DataFrame with processed options data
         """
+        # Smart currency selection from asset discovery
+        if currency is None:
+            currency = self.supported_currencies[0] if self.supported_currencies else 'BTC'
+            logger.info(f"No currency specified, using default: {currency}")
+        
+        # Validate currency is supported
+        if not self.is_currency_supported(currency):
+            logger.warning(f"Currency {currency} not found in asset discovery, proceeding anyway")
+        
         logger.info(f"Starting options data collection for {currency}")
         
         # FIXED: Smart default date logic instead of hard-coded dates
@@ -578,8 +633,11 @@ class DeribitCollector:
             end_date = datetime(2024, 12, 31)
             start_date = datetime(2024, 12, 30)
             
+            # Use a supported currency from asset discovery
+            test_currency = self.supported_currencies[0] if self.supported_currencies else "BTC"
+            
             test_params = {
-                "currency": "BTC",
+                "currency": test_currency,
                 "kind": "option",
                 "count": 5,  # Just get a few records to test
                 "include_old": True,  # Match working parameters
@@ -593,10 +651,10 @@ class DeribitCollector:
                 result = response['result']
                 if 'trades' in result:
                     trades = result['trades']
-                    logger.info(f"✅ Deribit API connection successful - found {len(trades)} historical trades")
+                    logger.info(f"✅ Deribit API connection successful - found {len(trades)} historical trades for {test_currency}")
                     return True
                 else:
-                    logger.info("✅ Deribit API connected successfully - API responding normally")
+                    logger.info(f"✅ Deribit API connected successfully - API responding normally for {test_currency}")
                     return True
             else:
                 logger.warning("⚠️ Deribit API response format unexpected, but connection working")
@@ -605,6 +663,49 @@ class DeribitCollector:
         except Exception as e:
             logger.error(f"❌ Connection test failed: {e}")
             return False
+
+    def collect_multiple_currencies(self, 
+                                  currencies: List[str] = None,
+                                  start_date: Union[date, datetime] = None,
+                                  end_date: Union[date, datetime] = None) -> Dict[str, pd.DataFrame]:
+        """
+        Collect options data for multiple currencies.
+        
+        Args:
+            currencies: List of currencies (uses asset discovery defaults if None)
+            start_date: Start date for collection
+            end_date: End date for collection
+            
+        Returns:
+            Dictionary mapping currency to DataFrame
+        """
+        if currencies is None:
+            currencies = self.get_supported_currencies()
+            logger.info(f"Using all supported currencies: {currencies}")
+        
+        results = {}
+        
+        for currency in currencies:
+            try:
+                logger.info(f"Collecting data for {currency}...")
+                data = self.collect_options_data(
+                    currency=currency,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                results[currency] = data
+                
+                if not data.empty:
+                    logger.info(f"✅ {currency}: Collected {len(data)} options")
+                else:
+                    logger.warning(f"⚠️ {currency}: No data collected")
+                    
+            except Exception as e:
+                logger.error(f"❌ {currency}: Collection failed - {e}")
+                results[currency] = pd.DataFrame()
+        
+        return results
+
 
 # Factory function for easy collector creation
 def create_collector(
@@ -628,16 +729,18 @@ def create_collector(
     else:
         raise ValueError(f"Unsupported exchange: {exchange}")
 
-# Convenience function for quick data collection
-def collect_btc_options(
-    start_date: Union[date, datetime],
-    end_date: Union[date, datetime],
+# Convenience function for quick data collection with asset discovery
+def collect_options_data(
+    currency: str = None,
+    start_date: Union[date, datetime] = None,
+    end_date: Union[date, datetime] = None,
     option_type: Optional[OptionType] = None
 ) -> pd.DataFrame:
     """
-    Quick function to collect BTC options data.
+    Quick function to collect options data with asset discovery integration.
     
     Args:
+        currency: Currency to collect (auto-selected if None)
         start_date: Start date
         end_date: End date
         option_type: Option type filter (optional)
@@ -647,11 +750,35 @@ def collect_btc_options(
     """
     with create_collector() as collector:
         return collector.collect_options_data(
-            currency="BTC",
+            currency=currency,
             start_date=start_date,
             end_date=end_date,
             option_type=option_type
         )
+
+# Backward compatibility
+def collect_btc_options(
+    start_date: Union[date, datetime],
+    end_date: Union[date, datetime],
+    option_type: Optional[OptionType] = None
+) -> pd.DataFrame:
+    """
+    Quick function to collect BTC options data (backward compatibility).
+    
+    Args:
+        start_date: Start date
+        end_date: End date
+        option_type: Option type filter (optional)
+        
+    Returns:
+        DataFrame with options data
+    """
+    return collect_options_data(
+        currency="BTC",
+        start_date=start_date,
+        end_date=end_date,
+        option_type=option_type
+    )
 
 if __name__ == "__main__":
     # Example usage and testing
@@ -663,13 +790,13 @@ if __name__ == "__main__":
     
     if success:
         print("✅ Data collector ready for use!")
+        print(f"Supported currencies: {collector.get_supported_currencies()}")
         
         # Example data collection
-        from datetime import date
         try:
-            data = collect_btc_options(
-                start_date=date(2025, 1, 20),
-                end_date=date(2025, 1, 21)
+            data = collect_options_data(
+                start_date=date(2024, 12, 30),
+                end_date=date(2024, 12, 31)
             )
             print(f"✅ Collected {len(data)} option records")
         except Exception as e:

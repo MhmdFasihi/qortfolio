@@ -1,0 +1,177 @@
+{
+  "assets": {
+    "all_currencies": [
+      "XRP",
+      "USYC",
+      "USDT",
+      "USDE",
+      "USDC",
+      "STETH",
+      "SOL",
+      "PAXG",
+      "MATIC",
+      "EURR",
+      "ETHW",
+      "ETH",
+      "BUIDL",
+      "BTC",
+      "BNB"
+    ],
+    "default_currencies": [
+      "BTC"
+    ],
+    "options_enabled": [
+      "USDC",
+      "ETH",
+      "BTC"
+    ],
+    "recommended": []
+  },
+  "details": {
+    "BNB": {
+      "active_instruments": 0,
+      "currency": "BNB",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "BTC": {
+      "active_instruments": 792,
+      "contract_size": 1.0,
+      "currency": "BTC",
+      "expiration_dates_count": 11,
+      "instruments_count": 792,
+      "max_strike": 400000.0,
+      "min_strike": 20000.0,
+      "min_trade_amount": 0.1,
+      "sample_instrument": "BTC-26MAY25-96000-C",
+      "strike_count": 85,
+      "supports_options": true,
+      "tick_size": 0.0001,
+      "total_instruments": 792
+    },
+    "BUIDL": {
+      "active_instruments": 0,
+      "currency": "BUIDL",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "ETH": {
+      "active_instruments": 696,
+      "contract_size": 1.0,
+      "currency": "ETH",
+      "expiration_dates_count": 11,
+      "instruments_count": 696,
+      "max_strike": 15000.0,
+      "min_strike": 500.0,
+      "min_trade_amount": 1,
+      "sample_instrument": "ETH-26MAY25-1500-C",
+      "strike_count": 75,
+      "supports_options": true,
+      "tick_size": 0.0001,
+      "total_instruments": 696
+    },
+    "ETHW": {
+      "active_instruments": 0,
+      "currency": "ETHW",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "EURR": {
+      "active_instruments": 0,
+      "currency": "EURR",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "MATIC": {
+      "active_instruments": 0,
+      "currency": "MATIC",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "PAXG": {
+      "active_instruments": 0,
+      "currency": "PAXG",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "SOL": {
+      "active_instruments": 0,
+      "currency": "SOL",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "STETH": {
+      "active_instruments": 0,
+      "currency": "STETH",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "USDC": {
+      "active_instruments": 1646,
+      "contract_size": 1.0,
+      "currency": "USDC",
+      "expiration_dates_count": 7,
+      "instruments_count": 1646,
+      "max_strike": 4900.0,
+      "min_strike": 1.0,
+      "min_trade_amount": 1,
+      "sample_instrument": "BNB_USDC-26MAY25-580-C",
+      "strike_count": 293,
+      "supports_options": true,
+      "tick_size": 0.1,
+      "total_instruments": 1646
+    },
+    "USDE": {
+      "active_instruments": 0,
+      "currency": "USDE",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "USDT": {
+      "active_instruments": 0,
+      "currency": "USDT",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "USYC": {
+      "active_instruments": 0,
+      "currency": "USYC",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    },
+    "XRP": {
+      "active_instruments": 0,
+      "currency": "XRP",
+      "instruments_count": 0,
+      "supports_options": false,
+      "total_instruments": 0
+    }
+  },
+  "discovery_info": {
+    "duration_seconds": 15.413871,
+    "last_discovery": "2025-05-26T03:56:15.529278",
+    "success": true,
+    "total_checked": 15
+  },
+  "metadata": {
+    "api_base_url": "https://www.deribit.com/api/v2",
+    "discovery_script_version": "1.0.0",
+    "last_updated": "2025-05-26T03:56:30.943149"
+  },
+  "prices": {
+    "BTC": null,
+    "ETH": null,
+    "USDC": null
+  }
+}
