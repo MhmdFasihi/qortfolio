@@ -27,6 +27,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, date, timedelta
+import concurrent.futures
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -317,7 +318,7 @@ def create_pnl_analysis_page():
                 st.code(traceback.format_exc())
 
 def create_data_collection_page():
-    """Create data collection testing page."""
+    """Create data collection testing page with improved async handling."""
     from src.data.collectors import DeribitCollector
     
     st.header("📊 Data Collection")
@@ -346,61 +347,166 @@ def create_data_collection_page():
     with col2:
         st.subheader("📅 Data Collection")
         
-        # Date selection
-        end_date = st.date_input(
-            "End Date",
-            value=date(2024, 12, 31),  # Use historical dates that have data
-            help="End date for data collection"
+        # FIXED: Use current date and 1 month before as defaults
+        st.info("💡 **Tip:** Recent dates may have limited data. Try different date ranges if no data is found.")
+        
+        # Smart date defaults - today and 1 month before
+        suggested_end = date.today()  # Today
+        suggested_start = suggested_end - timedelta(days=30)  # 1 month before
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            start_date = st.date_input(
+                "Start Date", 
+                value=suggested_start,
+                help="Historical dates work better"
+            )
+        with col_b:
+            end_date = st.date_input(
+                "End Date",
+                value=suggested_end,
+                help="End of 2024 is a known good range"
+            )
+        
+        currency = st.selectbox(
+            "Currency", 
+            ["BTC", "ETH"], 
+            help="Cryptocurrency to analyze"
         )
         
-        start_date = st.date_input(
-            "Start Date", 
-            value=end_date - timedelta(days=1),
-            help="Start date for data collection"
+        # FIXED: Add timeout and progress handling
+        timeout_seconds = st.selectbox(
+            "Timeout (seconds)",
+            [30, 60, 120, 300],
+            index=1,  # Default 60 seconds
+            help="Maximum time to wait for data collection"
         )
         
-        currency = st.selectbox("Currency", ["BTC", "ETH"], help="Cryptocurrency to analyze")
-        
-        if st.button("Collect Options Data"):
+        if st.button("🚀 Collect Options Data", type="primary"):
             if start_date <= end_date:
-                with st.spinner(f"Collecting {currency} options data..."):
+                # Create containers for progress updates
+                progress_container = st.container()
+                status_container = st.container()
+                result_container = st.container()
+                
+                with progress_container:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                
+                with status_container:
+                    status_text.text("🔄 Initializing data collection...")
+                
+                try:
+                    # FIXED: Use Streamlit-compatible approach without threading
+                    progress_bar.progress(10)
+                    status_text.text("🔗 Connecting to Deribit API...")
+                    
+                    from src.data.collectors import DeribitCollector
+                    
+                    # Initialize collector
+                    collector = DeribitCollector()
+                    
+                    progress_bar.progress(20)
+                    status_text.text("✅ API Connected - Testing...")
+                    
+                    # Test connection first
+                    if not collector.test_connection():
+                        st.error("❌ **API connection test failed**")
+                        st.info("💡 **Solutions:**")
+                        st.info("- Check your internet connection")
+                        st.info("- Verify Deribit API is accessible")
+                        return
+                    
+                    progress_bar.progress(40)
+                    status_text.text(f"📊 Collecting {currency} options data...")
+                    
+                    # Collect data (this will be synchronous but with progress updates)
                     try:
-                        from src.data.collectors import collect_options_data
-                        
-                        data = collect_options_data(
+                        data = collector.collect_options_data(
                             currency=currency,
                             start_date=start_date,
                             end_date=end_date
                         )
                         
-                        if not data.empty:
-                            st.success(f"✅ **Collected {len(data)} option records!**")
-                            
-                            # Display sample data
-                            st.subheader("📋 Sample Data")
-                            st.dataframe(data.head(10))
-                            
-                            # Data summary
-                            st.subheader("📊 Data Summary")
-                            col_a, col_b, col_c = st.columns(3)
-                            
-                            with col_a:
-                                st.metric("Total Records", len(data))
-                                st.metric("Unique Strikes", data['strike_price'].nunique())
-                            
-                            with col_b:
-                                st.metric("Call Options", len(data[data['option_type'] == 'call']))
-                                st.metric("Put Options", len(data[data['option_type'] == 'put']))
-                            
-                            with col_c:
-                                st.metric("Avg IV", f"{data['implied_volatility'].mean():.2%}")
-                                st.metric("Price Range", f"${data['underlying_price'].min():.0f} - ${data['underlying_price'].max():.0f}")
-                        else:
-                            st.warning("⚠️ **No data collected**")
-                            st.info("Try different dates or check API status")
-                            
+                        progress_bar.progress(90)
+                        status_text.text("🔄 Processing collected data...")
+                        
+                        progress_bar.progress(100)
+                        status_text.text("✅ Data collection completed!")
+                        
+                        # Display results
+                        with result_container:
+                            if data is not None and not data.empty:
+                                st.success(f"✅ **Collected {len(data)} option records!**")
+                                
+                                # Display sample data
+                                st.subheader("📋 Sample Data")
+                                st.dataframe(data.head(10))
+                                
+                                # Data summary
+                                st.subheader("📊 Data Summary")
+                                col_a, col_b, col_c = st.columns(3)
+                                
+                                with col_a:
+                                    st.metric("Total Records", len(data))
+                                    if 'strike_price' in data.columns:
+                                        st.metric("Unique Strikes", data['strike_price'].nunique())
+                                
+                                with col_b:
+                                    if 'option_type' in data.columns:
+                                        calls = len(data[data['option_type'].str.lower().str.contains('c', na=False)])
+                                        puts = len(data) - calls
+                                        st.metric("Call Options", calls)
+                                        st.metric("Put Options", puts)
+                                
+                                with col_c:
+                                    if 'implied_volatility' in data.columns:
+                                        st.metric("Avg IV", f"{data['implied_volatility'].mean():.2%}")
+                                    if 'underlying_price' in data.columns:
+                                        price_col = 'underlying_price'
+                                    elif 'index_price' in data.columns:
+                                        price_col = 'index_price'
+                                    else:
+                                        price_col = None
+                                        
+                                    if price_col:
+                                        st.metric("Price Range", 
+                                            f"${data[price_col].min():.0f} - ${data[price_col].max():.0f}")
+                                
+                                # Add download option
+                                csv = data.to_csv(index=False)
+                                st.download_button(
+                                    label="📥 Download Data as CSV",
+                                    data=csv,
+                                    file_name=f"{currency}_options_{start_date}_{end_date}.csv",
+                                    mime="text/csv"
+                                )
+                                
+                            else:
+                                st.warning("⚠️ **No data collected**")
+                                st.info("💡 **Try these solutions:**")
+                                st.info("- Try a different date range (options trading varies by date)")
+                                st.info("- Try a wider date range (e.g., 7-30 days)")
+                                st.info("- Check if the selected currency has active options trading")
+                                st.info("- Verify API status with connection test above")
+                                st.info("- Recent dates may have limited data, try historical dates")
+                    
                     except Exception as e:
                         st.error(f"❌ **Data collection failed:** {str(e)}")
+                        
+                        # FIXED: Provide helpful suggestions
+                        st.info("💡 **Troubleshooting suggestions:**")
+                        st.info("- Try different date ranges")
+                        st.info("- Check your internet connection")
+                        st.info("- Try a different currency (BTC usually has more data)")
+                        st.info("- Verify API connection with the test button above")
+                        
+                        with st.expander("🔍 Technical Details"):
+                            st.code(traceback.format_exc())
+                            
+                except Exception as e:
+                    st.error(f"❌ **Setup error:** {str(e)}")
+                    
             else:
                 st.error("❌ Start date must be before end date")
 
