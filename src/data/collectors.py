@@ -150,7 +150,7 @@ class DeribitCollector:
             logger.warning(f"Could not load currencies from asset discovery: {e}")
             # Fallback to hardcoded defaults
             self.supported_currencies = ['BTC', 'ETH']
-            self.all_supported_currencies = ['BTC', 'ETH', 'USDC']
+            self.all_supported_currencies = ['BTC', 'ETH']
 
     def get_supported_currencies(self) -> List[str]:
         """

@@ -60,8 +60,7 @@ def get_current_crypto_price(currency: str = "BTC") -> float:
     try:
         currency_map = {
             'BTC': 'bitcoin',
-            'ETH': 'ethereum', 
-            'USDC': 'usd-coin'
+            'ETH': 'ethereum'
         }
         
         coin_id = currency_map.get(currency.upper(), 'bitcoin')
@@ -86,9 +85,8 @@ def get_current_crypto_price(currency: str = "BTC") -> float:
         
         # Fallback prices
         fallback_prices = {
-            'BTC': 43000.0,
-            'ETH': 2600.0,
-            'USDC': 1.0
+            'BTC': 83000.0,
+            'ETH': 2600.0
         }
         
         fallback_price = fallback_prices.get(currency.upper(), 30000.0)
@@ -166,8 +164,7 @@ def get_smart_defaults(currency: str = "BTC") -> dict:
         else:
             volatility_defaults = {
                 'BTC': 80.0,
-                'ETH': 90.0,
-                'USDC': 20.0
+                'ETH': 90.0
             }
             default_volatility = volatility_defaults.get(currency, 80.0)
         
@@ -281,7 +278,7 @@ def create_pnl_analysis_page():
     with currency_col:
         selected_currency = st.selectbox(
             "Select Currency",
-            ["BTC", "ETH", "USDC"],
+            ["BTC", "ETH"],
             index=0,
             help="Choose cryptocurrency for analysis"
         )
@@ -549,8 +546,8 @@ def create_data_collection_page():
         st.info("💡 **Tip:** Recent dates may have limited data. Try historical dates like end of 2024 for better results.")
         
         # Smart date defaults
-        suggested_end = date(2024, 12, 31)   # Known good date
-        suggested_start = date(2024, 12, 30)  # Known good date
+        suggested_end = date.today()   # Known good date
+        suggested_start = date.today() - timedelta(days=30)  # Known good date
         
         col_a, col_b = st.columns(2)
         with col_a:
@@ -568,7 +565,7 @@ def create_data_collection_page():
         
         currency = st.selectbox(
             "Currency", 
-            ["BTC", "ETH", "USDC"], 
+            ["BTC", "ETH"], 
             help="Cryptocurrency to analyze"
         )
         
@@ -692,7 +689,7 @@ def create_greeks_calculator_page():
     # Currency selection
     selected_currency = st.selectbox(
         "Currency",
-        ["BTC", "ETH", "USDC"],
+        ["BTC", "ETH"],
         key="greeks_currency",
         help="Choose cryptocurrency for analysis"
     )
@@ -798,7 +795,7 @@ def create_scenario_analysis_page():
     # Currency selection
     selected_currency = st.selectbox(
         "Currency",
-        ["BTC", "ETH", "USDC"],
+        ["BTC", "ETH"],
         key="scenario_currency",
         help="Choose cryptocurrency for analysis"
     )

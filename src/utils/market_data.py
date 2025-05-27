@@ -35,8 +35,7 @@ def get_current_crypto_price(currency: str = "BTC") -> Optional[float]:
         # CoinGecko API endpoint (free, no API key required)
         currency_map = {
             'BTC': 'bitcoin',
-            'ETH': 'ethereum', 
-            'USDC': 'usd-coin'
+            'ETH': 'ethereum'
         }
         
         coin_id = currency_map.get(currency.upper(), 'bitcoin')
@@ -61,9 +60,8 @@ def get_current_crypto_price(currency: str = "BTC") -> Optional[float]:
         
         # Fallback prices (reasonable estimates)
         fallback_prices = {
-            'BTC': 43000.0,
-            'ETH': 2600.0,
-            'USDC': 1.0
+            'BTC': 83000.0,
+            'ETH': 2600.0
         }
         
         fallback_price = fallback_prices.get(currency.upper(), 30000.0)
@@ -238,8 +236,7 @@ def get_smart_defaults(currency: str = "BTC") -> Dict[str, float]:
             # Fallback volatility based on currency
             volatility_defaults = {
                 'BTC': 80.0,   # 80% typical for BTC options
-                'ETH': 90.0,   # 90% typical for ETH options  
-                'USDC': 20.0   # 20% for stablecoin options
+                'ETH': 90.0   # 90% typical for ETH options  
             }
             default_volatility = volatility_defaults.get(currency, 80.0)
         
