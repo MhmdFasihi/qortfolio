@@ -27,8 +27,20 @@ except ImportError:
     MODELS_AVAILABLE = False
 
 # Add src to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+import os
+current_dir = Path(__file__).parent
+root_dir = current_dir.parent
+src_dir = root_dir / "src"
 
+# Add both root and src to path
+sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(src_dir))
+
+# Debug: Print paths (remove after testing)
+print(f"Current dir: {current_dir}")
+print(f"Root dir: {root_dir}")
+print(f"Src dir: {src_dir}")
+print(f"Src exists: {src_dir.exists()}")
 try:
     import streamlit as st
     STREAMLIT_AVAILABLE = True
