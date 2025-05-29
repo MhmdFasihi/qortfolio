@@ -899,7 +899,7 @@ def create_scenario_analysis_page():
                 st.success(f"✅ **Analysis Complete! Generated {len(results)} scenarios**")
                 
                 # Risk metrics
-                col_a, col_b, col_c = st.columns(3)
+                col_a, col_b, col_c, col_d = st.columns(4)
                 
                 with col_a:
                     st.metric("Mean PnL", f"${risk_metrics['mean_pnl']:.2f}")
@@ -908,8 +908,12 @@ def create_scenario_analysis_page():
                 with col_b:
                     st.metric("95% VaR", f"${risk_metrics['var_95_pnl']:.2f}")
                     st.metric("99% VaR", f"${risk_metrics['var_99_pnl']:.2f}")
-                
+
                 with col_c:
+                    st.metric("95% CVaR", f"${risk_metrics['cvar_95_pnl']:.2f}")
+                    st.metric("99% CVaR", f"${risk_metrics['cvar_99_pnl']:.2f}")
+                
+                with col_d:
                     st.metric("Max Gain", f"${risk_metrics['max_pnl']:.2f}")
                     st.metric("Max Loss", f"${risk_metrics['min_pnl']:.2f}")
                 
