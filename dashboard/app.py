@@ -14,6 +14,18 @@ import traceback
 from pathlib import Path
 from datetime import datetime, date, timedelta
 
+try:
+    from src.analytics.pnl_simulator import TaylorExpansionPnL
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    ANALYTICS_AVAILABLE = False
+
+try:
+    from src.models.black_scholes import BlackScholesModel
+    MODELS_AVAILABLE = True
+except ImportError:
+    MODELS_AVAILABLE = False
+
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
