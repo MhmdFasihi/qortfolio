@@ -436,7 +436,7 @@ class EnhancedOptionsVisualizer:
                     "axis": {"range": [-1, 1]},
                     "bar": {"color": "blue"},
                     "steps": [
-                        {"range": [-1, -0.5], "color": "lightred"},
+                        {"range": [-1, -0.5], "color": "lightcoral"},
                         {"range": [-0.5, 0.5], "color": "lightgray"},
                         {"range": [0.5, 1], "color": "lightgreen"}
                     ],
@@ -461,7 +461,7 @@ class EnhancedOptionsVisualizer:
                     "bar": {"color": "green"},
                     "steps": [
                         {"range": [0, risk_thresholds['gamma']], "color": "lightgreen"},
-                        {"range": [risk_thresholds['gamma'], risk_thresholds['gamma'] * 2], "color": "lightred"}
+                        {"range": [risk_thresholds['gamma'], risk_thresholds['gamma'] * 2], "color": "lightcoral"}
                     ]
                 }
             ),
@@ -494,7 +494,7 @@ class EnhancedOptionsVisualizer:
                     "bar": {"color": "orange"},
                     "steps": [
                         {"range": [0, risk_thresholds['vega']], "color": "lightyellow"},
-                        {"range": [risk_thresholds['vega'], risk_thresholds['vega'] * 2], "color": "lightred"}
+                        {"range": [risk_thresholds['vega'], risk_thresholds['vega'] * 2], "color": "lightcoral"}
                     ]
                 }
             ),
