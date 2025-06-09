@@ -23,6 +23,8 @@ import traceback
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any, List
+from plotly.subplots import make_subplots
+
 
 # Add src to Python path
 current_dir = Path(__file__).parent
@@ -1598,8 +1600,14 @@ def create_greeks_3d_page():
             st.error(f"❌ Error generating 3D Greeks: {e}")
 
 
+# ==========================================
+# FIXED FUNCTIONS 
+# ==========================================
+
+
+
 def create_portfolio_greeks_page():
-    """Portfolio Greeks Management."""
+    """Portfolio Greeks Management - FIXED VERSION."""
     st.header("📊 Portfolio Greeks")
     st.markdown("**Aggregate and monitor Greeks across multiple option positions.**")
     
@@ -1683,7 +1691,8 @@ def create_portfolio_greeks_page():
                             option_type=OptionType.CALL if pos['type'] == 'Call' else OptionType.PUT
                         )
                         
-                        option_price = bs_model.calculate_price(option_params)
+                        # FIXED: Use correct method name
+                        option_price = bs_model.option_price(option_params)
                         greeks = bs_model.calculate_greeks(option_params)
                         
                         # Scale by quantity
@@ -1765,6 +1774,7 @@ def create_portfolio_greeks_page():
                     
             except Exception as e:
                 st.error(f"❌ Error calculating portfolio Greeks: {e}")
+                st.error("Please check that all position parameters are valid.")
         
         # Clear portfolio button
         if st.button("🗑️ Clear Portfolio"):
@@ -1776,7 +1786,7 @@ def create_portfolio_greeks_page():
 
 
 def create_risk_monitoring_page():
-    """Real-time Risk Monitoring."""
+    """Real-time Risk Monitoring - FIXED VERSION."""
     st.header("🚨 Risk Monitoring")
     st.markdown("**Monitor portfolio risk metrics and set up alerts.**")
     
@@ -1858,7 +1868,7 @@ def create_risk_monitoring_page():
                 else:
                     st.success("✅ All risk metrics within acceptable limits")
                 
-                # Risk gauge chart
+                # Risk gauge chart - FIXED VERSION
                 st.subheader("🎛️ Risk Gauges")
                 
                 fig = make_subplots(
@@ -1882,7 +1892,75 @@ def create_risk_monitoring_page():
                                        'thickness': 0.75, 'value': delta_limit}}),
                     row=1, col=1)
                 
-                # Add other gauges...
+                # Gamma gauge
+                fig.add_trace(go.Indicator(
+                    mode="gauge+number",
+                    value=abs(current_metrics['gamma']),
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    title={'text': "Gamma"},
+                    gauge={'axis': {'range': [None, gamma_limit * 2]},
+                           'bar': {'color': "green"},
+                           'steps': [{'range': [0, gamma_limit], 'color': "lightgray"},
+                                   {'range': [gamma_limit, gamma_limit * 2], 'color': "lightcoral"}],
+                           'threshold': {'line': {'color': "red", 'width': 4},
+                                       'thickness': 0.75, 'value': gamma_limit}}),
+                    row=1, col=2)
+                
+                # Theta gauge
+                fig.add_trace(go.Indicator(
+                    mode="gauge+number",
+                    value=abs(current_metrics['theta']),
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    title={'text': "Theta"},
+                    gauge={'axis': {'range': [None, theta_limit * 2]},
+                           'bar': {'color': "red"},
+                           'steps': [{'range': [0, theta_limit], 'color': "lightgray"},
+                                   {'range': [theta_limit, theta_limit * 2], 'color': "lightcoral"}],
+                           'threshold': {'line': {'color': "red", 'width': 4},
+                                       'thickness': 0.75, 'value': theta_limit}}),
+                    row=1, col=3)
+                
+                # Vega gauge
+                fig.add_trace(go.Indicator(
+                    mode="gauge+number",
+                    value=abs(current_metrics['vega']),
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    title={'text': "Vega"},
+                    gauge={'axis': {'range': [None, vega_limit * 2]},
+                           'bar': {'color': "orange"},
+                           'steps': [{'range': [0, vega_limit], 'color': "lightgray"},
+                                   {'range': [vega_limit, vega_limit * 2], 'color': "lightcoral"}],
+                           'threshold': {'line': {'color': "red", 'width': 4},
+                                       'thickness': 0.75, 'value': vega_limit}}),
+                    row=2, col=1)
+                
+                # VaR gauge
+                fig.add_trace(go.Indicator(
+                    mode="gauge+number",
+                    value=abs(current_metrics['var_95']),
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    title={'text': "VaR 95%"},
+                    gauge={'axis': {'range': [None, var_limit * 2]},
+                           'bar': {'color': "purple"},
+                           'steps': [{'range': [0, var_limit], 'color': "lightgray"},
+                                   {'range': [var_limit, var_limit * 2], 'color': "lightcoral"}],
+                           'threshold': {'line': {'color': "red", 'width': 4},
+                                       'thickness': 0.75, 'value': var_limit}}),
+                    row=2, col=2)
+                
+                # Overall risk score
+                risk_score = len(violations) / 5.0 * 100  # Percentage of violations
+                fig.add_trace(go.Indicator(
+                    mode="gauge+number",
+                    value=risk_score,
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    title={'text': "Overall Risk %"},
+                    gauge={'axis': {'range': [None, 100]},
+                           'bar': {'color': "darkred"},
+                           'steps': [{'range': [0, 25], 'color': "lightgreen"},
+                                   {'range': [25, 75], 'color': "yellow"},
+                                   {'range': [75, 100], 'color': "lightcoral"}]}),
+                    row=2, col=3)
                 
                 fig.update_layout(height=600)
                 st.plotly_chart(fig, use_container_width=True)
@@ -1925,7 +2003,7 @@ def create_risk_monitoring_page():
 
 
 def create_sensitivity_analysis_page():
-    """Parameter Sensitivity Analysis."""
+    """Parameter Sensitivity Analysis - FIXED VERSION."""
     st.header("🎯 Sensitivity Analysis")
     st.markdown("**Analyze how option prices and Greeks respond to parameter changes.**")
     
@@ -2016,7 +2094,8 @@ def create_sensitivity_analysis_page():
                         option_type=OptionType.CALL if option_type == "Call" else OptionType.PUT
                     )
                     
-                    price = bs_model.calculate_price(option_params)
+                    # FIXED: Use correct method name
+                    price = bs_model.option_price(option_params)
                     greeks = bs_model.calculate_greeks(option_params)
                     
                     results['option_price'].append(price)
@@ -2129,6 +2208,7 @@ def create_sensitivity_analysis_page():
                 
         except Exception as e:
             st.error(f"❌ Error in sensitivity analysis: {e}")
+            st.error("Please check that all parameters are valid.")
 
 
 def create_strategy_analysis_page():
