@@ -1471,33 +1471,90 @@ def create_distributions_page():
 
 
 def create_greeks_3d_page():
-    """3D Greeks Analysis."""
+    """3D Greeks Analysis - WITH REAL MARKET DATA."""
     st.header("⚡ Greeks 3D Analysis")
-    st.markdown("**Visualize Greeks behavior across multiple dimensions.**")
+    st.markdown("**Visualize Greeks behavior across multiple dimensions using real market data.**")
     
-    # Parameters
+    # Currency selection and real market data
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_currency = st.selectbox("Currency", ["BTC", "ETH"], key="greeks3d_currency")
+    
+    with col2:
+        if st.button("🔄 Refresh Market Data", key="greeks3d_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+    
+    # Get real market data
+    smart_defaults = get_smart_defaults(selected_currency)
+    display_market_data_status(selected_currency)
+    
+    # Parameters with real market defaults
+    st.subheader("🎯 Option Parameters")
+    st.info(f"💡 **Using real market data:** Current {selected_currency} price ${smart_defaults['spot_price']:,.0f}")
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        spot_price = st.number_input("Spot Price", min_value=1000.0, value=30000.0)
-        strike_price = st.number_input("Strike Price", min_value=1000.0, value=32000.0)
+        spot_price = st.number_input(
+            f"{selected_currency} Spot Price", 
+            min_value=1000.0, 
+            value=smart_defaults['spot_price']
+        )
+        strike_price = st.number_input(
+            "Strike Price", 
+            min_value=1000.0, 
+            value=smart_defaults['strike_price']
+        )
         
     with col2:
-        volatility = st.slider("Base Volatility", min_value=0.1, max_value=2.0, value=0.8, step=0.05)
-        greek_type = st.selectbox("Greek to Analyze", ["Delta", "Gamma", "Theta", "Vega"])
+        volatility = st.slider(
+            "Base Volatility", 
+            min_value=0.1, 
+            max_value=2.0, 
+            value=smart_defaults['volatility_percent']/100, 
+            step=0.05
+        )
+        time_to_expiry = st.number_input(
+            "Days to Expiry", 
+            min_value=1, 
+            value=int(smart_defaults['time_to_expiry_days'])
+        )
         
     with col3:
+        greek_type = st.selectbox("Greek to Analyze", ["Delta", "Gamma", "Theta", "Vega"])
+        option_type = st.selectbox("Option Type", ["Call", "Put"])
         surface_style = st.selectbox("Surface Style", ["Surface", "Wireframe", "Contour"])
         resolution = st.slider("Resolution", min_value=10, max_value=30, value=15)
     
+    # Analysis ranges based on real market data
+    st.subheader("📊 Analysis Ranges")
+    
+    range_col1, range_col2 = st.columns(2)
+    
+    with range_col1:
+        # Spot range centered on real current price
+        spot_range_pct = st.slider("Spot Price Range (%)", min_value=20, max_value=100, value=50)
+        spot_min = spot_price * (1 - spot_range_pct/200)
+        spot_max = spot_price * (1 + spot_range_pct/200)
+        st.caption(f"Range: ${spot_min:,.0f} - ${spot_max:,.0f}")
+        
+    with range_col2:
+        # Volatility range centered on real market IV
+        vol_range_pct = st.slider("Volatility Range (%)", min_value=30, max_value=150, value=80)
+        vol_min = volatility * (1 - vol_range_pct/200)
+        vol_max = volatility * (1 + vol_range_pct/200)
+        st.caption(f"Range: {vol_min:.1%} - {vol_max:.1%}")
+    
     if st.button("⚡ Generate 3D Greeks Surface", type="primary"):
         try:
-            with st.spinner(f"Generating {greek_type} 3D surface..."):
+            with st.spinner(f"Generating {greek_type} 3D surface using real {selected_currency} market data..."):
                 from src.models.black_scholes import BlackScholesModel, OptionParameters, OptionType
                 
-                # Create parameter ranges
-                spot_range = np.linspace(spot_price * 0.7, spot_price * 1.3, resolution)
-                vol_range = np.linspace(volatility * 0.5, volatility * 1.5, resolution)
+                # Create parameter ranges based on real market data
+                spot_range = np.linspace(spot_min, spot_max, resolution)
+                vol_range = np.linspace(vol_min, vol_max, resolution)
                 
                 X, Y = np.meshgrid(spot_range, vol_range)
                 Z = np.zeros_like(X)
@@ -1510,10 +1567,10 @@ def create_greeks_3d_page():
                         option_params = OptionParameters(
                             spot_price=spot,
                             strike_price=strike_price,
-                            time_to_expiry=30/365,  # 30 days
+                            time_to_expiry=time_to_expiry/365,
                             volatility=vol,
                             risk_free_rate=0.05,
-                            option_type=OptionType.CALL
+                            option_type=OptionType.CALL if option_type == "Call" else OptionType.PUT
                         )
                         
                         greeks = bs_model.calculate_greeks(option_params)
@@ -1534,7 +1591,8 @@ def create_greeks_3d_page():
                     fig.add_trace(go.Surface(
                         x=X, y=Y, z=Z,
                         colorscale='RdYlBu',
-                        name=f'{greek_type} Surface'
+                        name=f'{greek_type} Surface',
+                        colorbar=dict(title=f"{greek_type} Value")
                     ))
                 elif surface_style == "Wireframe":
                     fig.add_trace(go.Scatter3d(
@@ -1547,25 +1605,57 @@ def create_greeks_3d_page():
                     fig.add_trace(go.Contour(
                         x=spot_range, y=vol_range, z=Z,
                         colorscale='RdYlBu',
-                        name=f'{greek_type} Contour'
+                        name=f'{greek_type} Contour',
+                        colorbar=dict(title=f"{greek_type} Value")
                     ))
                 
+                # Add current market position marker
+                current_vol_idx = np.argmin(np.abs(vol_range - volatility))
+                current_spot_idx = np.argmin(np.abs(spot_range - spot_price))
+                current_greek_value = Z[current_vol_idx, current_spot_idx]
+                
                 if surface_style != "Contour":
+                    # Add marker for current market position
+                    fig.add_trace(go.Scatter3d(
+                        x=[spot_price], y=[volatility], z=[current_greek_value],
+                        mode='markers',
+                        marker=dict(size=10, color='red', symbol='diamond'),
+                        name=f'Current Market Position',
+                        text=f'Current {greek_type}: {current_greek_value:.4f}',
+                        hovertemplate=f'<b>Current Market</b><br>' +
+                                    f'{selected_currency} Price: ${spot_price:,.0f}<br>' +
+                                    f'Volatility: {volatility:.1%}<br>' +
+                                    f'{greek_type}: {current_greek_value:.4f}<extra></extra>'
+                    ))
+                    
                     fig.update_layout(
-                        title=f"3D {greek_type} Surface",
+                        title=f"3D {greek_type} Surface for {selected_currency} {option_type} Options",
                         scene=dict(
-                            xaxis_title="Spot Price",
+                            xaxis_title=f"{selected_currency} Spot Price ($)",
                             yaxis_title="Volatility",
-                            zaxis_title=greek_type,
+                            zaxis_title=f"{greek_type}",
                             camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
                         ),
                         width=1000,
                         height=700
                     )
                 else:
+                    # Add marker for current market position on contour plot
+                    fig.add_trace(go.Scatter(
+                        x=[spot_price], y=[volatility],
+                        mode='markers',
+                        marker=dict(size=15, color='red', symbol='diamond', line=dict(width=2, color='white')),
+                        name='Current Market',
+                        text=f'Current {greek_type}: {current_greek_value:.4f}',
+                        hovertemplate=f'<b>Current Market</b><br>' +
+                                    f'{selected_currency} Price: ${spot_price:,.0f}<br>' +
+                                    f'Volatility: {volatility:.1%}<br>' +
+                                    f'{greek_type}: {current_greek_value:.4f}<extra></extra>'
+                    ))
+                    
                     fig.update_layout(
-                        title=f"{greek_type} Contour Plot",
-                        xaxis_title="Spot Price",
+                        title=f"{greek_type} Contour Plot for {selected_currency} {option_type} Options",
+                        xaxis_title=f"{selected_currency} Spot Price ($)",
                         yaxis_title="Volatility",
                         width=1000,
                         height=600
@@ -1573,12 +1663,14 @@ def create_greeks_3d_page():
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Greeks analysis
+                # Enhanced analysis with market context
                 st.subheader("📊 Greeks Analysis")
+                st.success(f"✅ **Analysis complete using real {selected_currency} market data**")
+                
                 col_a, col_b, col_c, col_d = st.columns(4)
                 
                 with col_a:
-                    st.metric(f"Current {greek_type}", f"{Z[resolution//2, resolution//2]:.4f}")
+                    st.metric(f"Current Market {greek_type}", f"{current_greek_value:.4f}")
                     st.metric(f"Max {greek_type}", f"{np.max(Z):.4f}")
                 
                 with col_b:
@@ -1590,45 +1682,166 @@ def create_greeks_3d_page():
                     st.metric(f"Std Dev", f"{np.std(Z):.4f}")
                 
                 with col_d:
-                    # Sensitivity metrics
+                    # Sensitivity metrics around current market position
                     spot_sensitivity = np.mean(np.gradient(Z, axis=1))
                     vol_sensitivity = np.mean(np.gradient(Z, axis=0))
                     st.metric("Spot Sensitivity", f"{spot_sensitivity:.6f}")
                     st.metric("Vol Sensitivity", f"{vol_sensitivity:.6f}")
                 
+                # Market insights
+                st.subheader("💡 Market Insights")
+                
+                col_i1, col_i2, col_i3 = st.columns(3)
+                
+                with col_i1:
+                    st.info(f"**Current {selected_currency}:** ${spot_price:,.0f}")
+                    st.info(f"**Strike:** ${strike_price:,.0f}")
+                    moneyness = strike_price / spot_price
+                    if moneyness < 0.95:
+                        money_status = "ITM" if option_type == "Put" else "OTM"
+                    elif moneyness > 1.05:
+                        money_status = "ITM" if option_type == "Call" else "OTM"
+                    else:
+                        money_status = "ATM"
+                    st.info(f"**Moneyness:** {moneyness:.3f} ({money_status})")
+                
+                with col_i2:
+                    st.info(f"**Current IV:** {volatility:.1%}")
+                    st.info(f"**Time to Expiry:** {time_to_expiry} days")
+                    # Greeks interpretation
+                    if greek_type == "Delta":
+                        if abs(current_greek_value) > 0.5:
+                            delta_interp = "High directional exposure"
+                        elif abs(current_greek_value) > 0.3:
+                            delta_interp = "Moderate directional exposure"
+                        else:
+                            delta_interp = "Low directional exposure"
+                        st.info(f"**Delta Status:** {delta_interp}")
+                    elif greek_type == "Gamma":
+                        if current_greek_value > 0.01:
+                            gamma_interp = "High gamma risk"
+                        elif current_greek_value > 0.005:
+                            gamma_interp = "Moderate gamma risk"
+                        else:
+                            gamma_interp = "Low gamma risk"
+                        st.info(f"**Gamma Status:** {gamma_interp}")
+                
+                with col_i3:
+                    st.info(f"**Spot Range:** ${spot_min:,.0f} - ${spot_max:,.0f}")
+                    st.info(f"**Vol Range:** {vol_min:.1%} - {vol_max:.1%}")
+                    # Risk assessment
+                    greek_std = np.std(Z)
+                    if greek_std > abs(current_greek_value) * 0.5:
+                        risk_level = "HIGH - Very sensitive to market moves"
+                    elif greek_std > abs(current_greek_value) * 0.2:
+                        risk_level = "MEDIUM - Moderately sensitive"
+                    else:
+                        risk_level = "LOW - Relatively stable"
+                    st.info(f"**Risk Level:** {risk_level}")
+                
+                # Scenario analysis
+                with st.expander("📈 Scenario Analysis"):
+                    st.markdown("**What-if scenarios based on current market:**")
+                    
+                    scenarios = [
+                        {"name": "10% Price Drop", "spot_change": -0.1, "vol_change": 0.2},
+                        {"name": "10% Price Rise", "spot_change": 0.1, "vol_change": -0.1},
+                        {"name": "Vol Spike (+50%)", "spot_change": 0, "vol_change": 0.5},
+                        {"name": "Vol Crush (-30%)", "spot_change": 0, "vol_change": -0.3}
+                    ]
+                    
+                    scenario_results = []
+                    
+                    for scenario in scenarios:
+                        new_spot = spot_price * (1 + scenario["spot_change"])
+                        new_vol = volatility * (1 + scenario["vol_change"])
+                        
+                        # Find closest point in our surface
+                        spot_idx = np.argmin(np.abs(spot_range - new_spot))
+                        vol_idx = np.argmin(np.abs(vol_range - new_vol))
+                        
+                        if 0 <= spot_idx < len(spot_range) and 0 <= vol_idx < len(vol_range):
+                            scenario_greek = Z[vol_idx, spot_idx]
+                            change = scenario_greek - current_greek_value
+                            scenario_results.append({
+                                "Scenario": scenario["name"],
+                                f"New {greek_type}": f"{scenario_greek:.4f}",
+                                "Change": f"{change:+.4f}",
+                                "% Change": f"{(change/current_greek_value)*100:+.1f}%" if current_greek_value != 0 else "N/A"
+                            })
+                    
+                    if scenario_results:
+                        scenario_df = pd.DataFrame(scenario_results)
+                        st.dataframe(scenario_df, use_container_width=True)
+                
         except Exception as e:
             st.error(f"❌ Error generating 3D Greeks: {e}")
-
-
-# ==========================================
-# FIXED FUNCTIONS 
-# ==========================================
-
-
+            st.error("Please check that all parameters are valid.")
 
 def create_portfolio_greeks_page():
-    """Portfolio Greeks Management - FIXED VERSION."""
+    """Portfolio Greeks Management - WITH REAL MARKET DATA."""
     st.header("📊 Portfolio Greeks")
     st.markdown("**Aggregate and monitor Greeks across multiple option positions.**")
     
+    # Currency selection with real market data
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_currency = st.selectbox("Currency", ["BTC", "ETH"], key="portfolio_currency")
+    
+    with col2:
+        if st.button("🔄 Refresh Market Data"):
+            st.cache_data.clear()
+            st.rerun()
+    
+    # Get real market data
+    smart_defaults = get_smart_defaults(selected_currency)
+    display_market_data_status(selected_currency)
+    
     # Portfolio input section
     st.subheader("🎯 Portfolio Positions")
+    st.info(f"💡 **Using real market data:** Current {selected_currency} price ${smart_defaults['spot_price']:,.0f}")
     
     # Initialize session state for portfolio
     if 'portfolio_positions' not in st.session_state:
         st.session_state.portfolio_positions = []
     
-    # Add new position
+    # Add new position with real market defaults
     with st.expander("➕ Add New Position"):
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            pos_spot = st.number_input("Spot Price", min_value=1000.0, value=30000.0, key="pos_spot")
-            pos_strike = st.number_input("Strike Price", min_value=1000.0, value=32000.0, key="pos_strike")
+            # Use real current price as default
+            pos_spot = st.number_input(
+                f"{selected_currency} Spot Price", 
+                min_value=1000.0, 
+                value=smart_defaults['spot_price'], 
+                key="pos_spot"
+            )
+            # Use real strike price based on market data
+            pos_strike = st.number_input(
+                "Strike Price", 
+                min_value=1000.0, 
+                value=smart_defaults['strike_price'], 
+                key="pos_strike"
+            )
         
         with col2:
-            pos_tte = st.number_input("Days to Expiry", min_value=1, value=30, key="pos_tte")
-            pos_vol = st.slider("Volatility", min_value=0.1, max_value=2.0, value=0.8, key="pos_vol")
+            # Use real time to expiry
+            pos_tte = st.number_input(
+                "Days to Expiry", 
+                min_value=1, 
+                value=int(smart_defaults['time_to_expiry_days']), 
+                key="pos_tte"
+            )
+            # Use real volatility
+            pos_vol = st.slider(
+                "Volatility", 
+                min_value=0.1, 
+                max_value=2.0, 
+                value=smart_defaults['volatility_percent']/100, 
+                key="pos_vol"
+            )
         
         with col3:
             pos_type = st.selectbox("Option Type", ["Call", "Put"], key="pos_type")
@@ -1639,6 +1852,7 @@ def create_portfolio_greeks_page():
             if st.button("Add Position"):
                 position = {
                     'id': len(st.session_state.portfolio_positions),
+                    'currency': selected_currency,
                     'spot': pos_spot,
                     'strike': pos_strike,
                     'tte': pos_tte / 365,
@@ -1659,7 +1873,7 @@ def create_portfolio_greeks_page():
         portfolio_df['tte_days'] = (portfolio_df['tte'] * 365).round(0)
         
         edited_df = st.data_editor(
-            portfolio_df[['strike', 'tte_days', 'vol', 'type', 'quantity']],
+            portfolio_df[['currency', 'strike', 'tte_days', 'vol', 'type', 'quantity']],
             key="portfolio_editor",
             num_rows="dynamic",
             use_container_width=True
@@ -1667,7 +1881,7 @@ def create_portfolio_greeks_page():
         
         if st.button("🧮 Calculate Portfolio Greeks"):
             try:
-                with st.spinner("Calculating portfolio Greeks..."):
+                with st.spinner("Calculating portfolio Greeks with real market data..."):
                     from src.models.black_scholes import BlackScholesModel, OptionParameters, OptionType
                     
                     total_greeks = {
@@ -1678,12 +1892,20 @@ def create_portfolio_greeks_page():
                     position_results = []
                     bs_model = BlackScholesModel()
                     
+                    # Update current spot prices for all currencies
+                    current_prices = {}
+                    for currency in edited_df['currency'].unique():
+                        current_prices[currency] = get_current_crypto_price(currency)
+                    
                     for _, pos in edited_df.iterrows():
                         if pd.isna(pos['quantity']) or pos['quantity'] == 0:
                             continue
-                            
+                        
+                        # Use real current price for each currency
+                        current_spot = current_prices.get(pos['currency'], smart_defaults['spot_price'])
+                        
                         option_params = OptionParameters(
-                            spot_price=pos_spot,  # Using same spot for all
+                            spot_price=current_spot,
                             strike_price=pos['strike'],
                             time_to_expiry=pos['tte_days'] / 365,
                             volatility=pos['vol'],
@@ -1691,7 +1913,6 @@ def create_portfolio_greeks_page():
                             option_type=OptionType.CALL if pos['type'] == 'Call' else OptionType.PUT
                         )
                         
-                        # FIXED: Use correct method name
                         option_price = bs_model.option_price(option_params)
                         greeks = bs_model.calculate_greeks(option_params)
                         
@@ -1700,11 +1921,13 @@ def create_portfolio_greeks_page():
                         position_value = option_price * quantity
                         
                         position_results.append({
+                            'Currency': pos['currency'],
                             'Strike': pos['strike'],
                             'Type': pos['type'],
                             'Quantity': quantity,
-                            'Price': option_price,
-                            'Value': position_value,
+                            'Current Spot': f"${current_spot:,.0f}",
+                            'Price': f"${option_price:.2f}",
+                            'Value': f"${position_value:.2f}",
                             'Delta': greeks.delta * quantity,
                             'Gamma': greeks.gamma * quantity,
                             'Theta': greeks.theta * quantity,
@@ -1720,6 +1943,7 @@ def create_portfolio_greeks_page():
                     
                     # Display results
                     st.subheader("📊 Portfolio Greeks Summary")
+                    st.success("✅ **Calculated using real market prices**")
                     
                     col1, col2, col3, col4, col5 = st.columns(5)
                     
@@ -1750,24 +1974,17 @@ def create_portfolio_greeks_page():
                                [{"secondary_y": False}, {"secondary_y": False}]]
                     )
                     
-                    positions = [f"{row['Type']} {row['Strike']}" for _, row in position_df.iterrows()]
+                    # Extract numeric Greeks for plotting
+                    positions = [f"{row['Currency']} {row['Type']} {row['Strike']}" for _, row in position_df.iterrows()]
+                    deltas = [float(row['Delta']) for _, row in position_df.iterrows()]
+                    gammas = [float(row['Gamma']) for _, row in position_df.iterrows()]
+                    thetas = [float(row['Theta']) for _, row in position_df.iterrows()]
+                    vegas = [float(row['Vega']) for _, row in position_df.iterrows()]
                     
-                    fig.add_trace(
-                        go.Bar(x=positions, y=position_df['Delta'], name='Delta'),
-                        row=1, col=1
-                    )
-                    fig.add_trace(
-                        go.Bar(x=positions, y=position_df['Gamma'], name='Gamma'),
-                        row=1, col=2
-                    )
-                    fig.add_trace(
-                        go.Bar(x=positions, y=position_df['Theta'], name='Theta'),
-                        row=2, col=1
-                    )
-                    fig.add_trace(
-                        go.Bar(x=positions, y=position_df['Vega'], name='Vega'),
-                        row=2, col=2
-                    )
+                    fig.add_trace(go.Bar(x=positions, y=deltas, name='Delta'), row=1, col=1)
+                    fig.add_trace(go.Bar(x=positions, y=gammas, name='Gamma'), row=1, col=2)
+                    fig.add_trace(go.Bar(x=positions, y=thetas, name='Theta'), row=2, col=1)
+                    fig.add_trace(go.Bar(x=positions, y=vegas, name='Vega'), row=2, col=2)
                     
                     fig.update_layout(height=600, showlegend=False)
                     st.plotly_chart(fig, use_container_width=True)
@@ -1786,9 +2003,24 @@ def create_portfolio_greeks_page():
 
 
 def create_risk_monitoring_page():
-    """Real-time Risk Monitoring - FIXED VERSION."""
+    """Real-time Risk Monitoring - WITH REAL MARKET DATA."""
     st.header("🚨 Risk Monitoring")
-    st.markdown("**Monitor portfolio risk metrics and set up alerts.**")
+    st.markdown("**Monitor portfolio risk metrics using real market data and set up alerts.**")
+    
+    # Currency selection
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_currency = st.selectbox("Monitor Currency", ["BTC", "ETH"], key="risk_currency")
+    
+    with col2:
+        if st.button("🔄 Refresh Market Data", key="risk_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+    
+    # Display real market data
+    smart_defaults = get_smart_defaults(selected_currency)
+    display_market_data_status(selected_currency)
     
     # Risk thresholds setup
     st.subheader("⚙️ Risk Thresholds")
@@ -1807,19 +2039,105 @@ def create_risk_monitoring_page():
         var_limit = st.slider("VaR Limit (95%)", min_value=0, max_value=10000, value=2000, step=100)
         enable_alerts = st.checkbox("Enable Alerts", value=True)
     
-    # Simulate portfolio data
+    # Check real portfolio or simulate realistic data
     if st.button("🔍 Run Risk Check", type="primary"):
         try:
             with st.spinner("Checking portfolio risk metrics..."):
-                # Simulate current portfolio Greeks (you can replace with real data)
-                current_metrics = {
-                    'delta': np.random.normal(1.5, 0.5),
-                    'gamma': np.random.normal(0.008, 0.003),
-                    'theta': np.random.normal(-80, 20),
-                    'vega': np.random.normal(150, 50),
-                    'var_95': np.random.normal(1800, 400),
-                    'portfolio_value': 50000
-                }
+                
+                # Try to get real portfolio data from session state
+                if 'portfolio_positions' in st.session_state and st.session_state.portfolio_positions:
+                    st.info("📊 **Using your actual portfolio data**")
+                    
+                    # Calculate real portfolio Greeks
+                    from src.models.black_scholes import BlackScholesModel, OptionParameters, OptionType
+                    
+                    total_greeks = {'delta': 0, 'gamma': 0, 'theta': 0, 'vega': 0, 'portfolio_value': 0}
+                    bs_model = BlackScholesModel()
+                    
+                    # Get current price
+                    current_price = get_current_crypto_price(selected_currency)
+                    
+                    for pos in st.session_state.portfolio_positions:
+                        if pos.get('currency') == selected_currency:
+                            option_params = OptionParameters(
+                                spot_price=current_price,
+                                strike_price=pos['strike'],
+                                time_to_expiry=pos['tte'],
+                                volatility=pos['vol'],
+                                risk_free_rate=0.05,
+                                option_type=OptionType.CALL if pos['type'] == 'Call' else OptionType.PUT
+                            )
+                            
+                            option_price = bs_model.option_price(option_params)
+                            greeks = bs_model.calculate_greeks(option_params)
+                            quantity = pos['quantity']
+                            
+                            total_greeks['delta'] += greeks.delta * quantity
+                            total_greeks['gamma'] += greeks.gamma * quantity
+                            total_greeks['theta'] += greeks.theta * quantity
+                            total_greeks['vega'] += greeks.vega * quantity
+                            total_greeks['portfolio_value'] += option_price * quantity
+                    
+                    # Calculate VaR using real data
+                    var_95 = abs(total_greeks['delta']) * current_price * 0.05  # 5% price move
+                    
+                    current_metrics = {
+                        'delta': total_greeks['delta'],
+                        'gamma': total_greeks['gamma'],
+                        'theta': total_greeks['theta'],
+                        'vega': total_greeks['vega'],
+                        'var_95': var_95,
+                        'portfolio_value': total_greeks['portfolio_value']
+                    }
+                    
+                else:
+                    st.info("📊 **Simulating portfolio based on real market data**")
+                    
+                    # Simulate a realistic portfolio based on real market conditions
+                    current_price = smart_defaults['spot_price']
+                    realistic_strike = smart_defaults['strike_price']
+                    realistic_vol = smart_defaults['volatility_percent'] / 100
+                    
+                    # Create a sample portfolio that reflects real market conditions
+                    positions = [
+                        {'strike': realistic_strike, 'type': 'Call', 'quantity': 2},
+                        {'strike': current_price * 0.95, 'type': 'Put', 'quantity': 1},
+                        {'strike': current_price * 1.05, 'type': 'Call', 'quantity': -1}  # Short position
+                    ]
+                    
+                    from src.models.black_scholes import BlackScholesModel, OptionParameters, OptionType
+                    bs_model = BlackScholesModel()
+                    
+                    total_delta, total_gamma, total_theta, total_vega = 0, 0, 0, 0
+                    
+                    for pos in positions:
+                        option_params = OptionParameters(
+                            spot_price=current_price,
+                            strike_price=pos['strike'],
+                            time_to_expiry=30/365,
+                            volatility=realistic_vol,
+                            risk_free_rate=0.05,
+                            option_type=OptionType.CALL if pos['type'] == 'Call' else OptionType.PUT
+                        )
+                        
+                        greeks = bs_model.calculate_greeks(option_params)
+                        quantity = pos['quantity']
+                        
+                        total_delta += greeks.delta * quantity
+                        total_gamma += greeks.gamma * quantity
+                        total_theta += greeks.theta * quantity
+                        total_vega += greeks.vega * quantity
+                    
+                    # Add some realistic noise
+                    noise_factor = 0.1
+                    current_metrics = {
+                        'delta': total_delta * (1 + np.random.normal(0, noise_factor)),
+                        'gamma': total_gamma * (1 + np.random.normal(0, noise_factor)),
+                        'theta': total_theta * (1 + np.random.normal(0, noise_factor)),
+                        'vega': total_vega * (1 + np.random.normal(0, noise_factor)),
+                        'var_95': abs(total_delta) * current_price * 0.05,
+                        'portfolio_value': 50000
+                    }
                 
                 # Check for violations
                 violations = []
@@ -1835,8 +2153,9 @@ def create_risk_monitoring_page():
                 if abs(current_metrics['var_95']) > var_limit:
                     violations.append(('VaR 95%', current_metrics['var_95'], var_limit))
                 
-                # Display current metrics
+                # Display current metrics with real market context
                 st.subheader("📊 Current Risk Metrics")
+                st.info(f"💡 **Market Context:** {selected_currency} @ ${smart_defaults['spot_price']:,.0f}")
                 
                 col_a, col_b, col_c, col_d, col_e = st.columns(5)
                 
@@ -1865,160 +2184,103 @@ def create_risk_monitoring_page():
                     st.subheader("🚨 Risk Alerts")
                     for metric, value, limit in violations:
                         st.error(f"**{metric} VIOLATION**: Current value {value:.4f} exceeds limit {limit:.4f}")
+                    
+                    # Risk interpretation
+                    with st.expander("📋 Risk Interpretation"):
+                        st.markdown("**Risk Alert Explanations:**")
+                        for metric, value, limit in violations:
+                            if metric == "Delta":
+                                st.markdown(f"- **Delta Risk**: High directional exposure to {selected_currency} price moves")
+                            elif metric == "Gamma":
+                                st.markdown(f"- **Gamma Risk**: Delta will change rapidly with price moves")
+                            elif metric == "Theta":
+                                st.markdown(f"- **Time Decay Risk**: Portfolio losing ${abs(value):.2f} per day")
+                            elif metric == "Vega":
+                                st.markdown(f"- **Volatility Risk**: High exposure to volatility changes")
+                            elif metric == "VaR":
+                                st.markdown(f"- **Value at Risk**: Could lose ${abs(value):,.0f} in adverse scenarios")
                 else:
                     st.success("✅ All risk metrics within acceptable limits")
                 
-                # Risk gauge chart - FIXED VERSION
-                st.subheader("🎛️ Risk Gauges")
+                # Quick risk dashboard (simplified version without complex gauges)
+                st.subheader("📊 Risk Overview")
                 
-                fig = make_subplots(
-                    rows=2, cols=3,
-                    subplot_titles=("Delta", "Gamma", "Theta", "Vega", "VaR", "Overall Risk"),
-                    specs=[[{"type": "indicator"}, {"type": "indicator"}, {"type": "indicator"}],
-                           [{"type": "indicator"}, {"type": "indicator"}, {"type": "indicator"}]]
-                )
+                risk_data = {
+                    'Metric': ['Delta', 'Gamma', 'Theta', 'Vega', 'VaR 95%'],
+                    'Current': [
+                        abs(current_metrics['delta']),
+                        abs(current_metrics['gamma']),
+                        abs(current_metrics['theta']),
+                        abs(current_metrics['vega']),
+                        abs(current_metrics['var_95'])
+                    ],
+                    'Limit': [delta_limit, gamma_limit, theta_limit, vega_limit, var_limit],
+                    'Status': [
+                        '🔴 VIOLATION' if abs(current_metrics['delta']) > delta_limit else '✅ OK',
+                        '🔴 VIOLATION' if abs(current_metrics['gamma']) > gamma_limit else '✅ OK',
+                        '🔴 VIOLATION' if abs(current_metrics['theta']) > theta_limit else '✅ OK',
+                        '🔴 VIOLATION' if abs(current_metrics['vega']) > vega_limit else '✅ OK',
+                        '🔴 VIOLATION' if abs(current_metrics['var_95']) > var_limit else '✅ OK'
+                    ]
+                }
                 
-                # Delta gauge
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=abs(current_metrics['delta']),
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "Delta"},
-                    gauge={'axis': {'range': [None, delta_limit * 2]},
-                           'bar': {'color': "darkblue"},
-                           'steps': [{'range': [0, delta_limit], 'color': "lightgray"},
-                                   {'range': [delta_limit, delta_limit * 2], 'color': "lightcoral"}],
-                           'threshold': {'line': {'color': "red", 'width': 4},
-                                       'thickness': 0.75, 'value': delta_limit}}),
-                    row=1, col=1)
-                
-                # Gamma gauge
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=abs(current_metrics['gamma']),
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "Gamma"},
-                    gauge={'axis': {'range': [None, gamma_limit * 2]},
-                           'bar': {'color': "green"},
-                           'steps': [{'range': [0, gamma_limit], 'color': "lightgray"},
-                                   {'range': [gamma_limit, gamma_limit * 2], 'color': "lightcoral"}],
-                           'threshold': {'line': {'color': "red", 'width': 4},
-                                       'thickness': 0.75, 'value': gamma_limit}}),
-                    row=1, col=2)
-                
-                # Theta gauge
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=abs(current_metrics['theta']),
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "Theta"},
-                    gauge={'axis': {'range': [None, theta_limit * 2]},
-                           'bar': {'color': "red"},
-                           'steps': [{'range': [0, theta_limit], 'color': "lightgray"},
-                                   {'range': [theta_limit, theta_limit * 2], 'color': "lightcoral"}],
-                           'threshold': {'line': {'color': "red", 'width': 4},
-                                       'thickness': 0.75, 'value': theta_limit}}),
-                    row=1, col=3)
-                
-                # Vega gauge
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=abs(current_metrics['vega']),
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "Vega"},
-                    gauge={'axis': {'range': [None, vega_limit * 2]},
-                           'bar': {'color': "orange"},
-                           'steps': [{'range': [0, vega_limit], 'color': "lightgray"},
-                                   {'range': [vega_limit, vega_limit * 2], 'color': "lightcoral"}],
-                           'threshold': {'line': {'color': "red", 'width': 4},
-                                       'thickness': 0.75, 'value': vega_limit}}),
-                    row=2, col=1)
-                
-                # VaR gauge
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=abs(current_metrics['var_95']),
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "VaR 95%"},
-                    gauge={'axis': {'range': [None, var_limit * 2]},
-                           'bar': {'color': "purple"},
-                           'steps': [{'range': [0, var_limit], 'color': "lightgray"},
-                                   {'range': [var_limit, var_limit * 2], 'color': "lightcoral"}],
-                           'threshold': {'line': {'color': "red", 'width': 4},
-                                       'thickness': 0.75, 'value': var_limit}}),
-                    row=2, col=2)
-                
-                # Overall risk score
-                risk_score = len(violations) / 5.0 * 100  # Percentage of violations
-                fig.add_trace(go.Indicator(
-                    mode="gauge+number",
-                    value=risk_score,
-                    domain={'x': [0, 1], 'y': [0, 1]},
-                    title={'text': "Overall Risk %"},
-                    gauge={'axis': {'range': [None, 100]},
-                           'bar': {'color': "darkred"},
-                           'steps': [{'range': [0, 25], 'color': "lightgreen"},
-                                   {'range': [25, 75], 'color': "yellow"},
-                                   {'range': [75, 100], 'color': "lightcoral"}]}),
-                    row=2, col=3)
-                
-                fig.update_layout(height=600)
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Historical risk evolution (simulated)
-                st.subheader("📈 Risk Evolution")
-                
-                dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
-                risk_history = pd.DataFrame({
-                    'date': dates,
-                    'delta': np.random.normal(1.5, 0.3, 30),
-                    'gamma': np.random.normal(0.008, 0.002, 30),
-                    'var_95': np.random.normal(1800, 200, 30)
-                })
-                
-                fig_history = go.Figure()
-                
-                fig_history.add_trace(go.Scatter(
-                    x=risk_history['date'], y=risk_history['delta'],
-                    mode='lines', name='Delta', yaxis='y'
-                ))
-                
-                fig_history.add_trace(go.Scatter(
-                    x=risk_history['date'], y=risk_history['var_95'],
-                    mode='lines', name='VaR 95%', yaxis='y2'
-                ))
-                
-                fig_history.update_layout(
-                    title="Risk Metrics Evolution",
-                    xaxis_title="Date",
-                    yaxis=dict(title="Delta", side="left"),
-                    yaxis2=dict(title="VaR ($)", side="right", overlaying="y"),
-                    hovermode='x unified'
-                )
-                
-                st.plotly_chart(fig_history, use_container_width=True)
+                risk_df = pd.DataFrame(risk_data)
+                st.dataframe(risk_df, use_container_width=True)
                 
         except Exception as e:
             st.error(f"❌ Error in risk monitoring: {e}")
 
 
 def create_sensitivity_analysis_page():
-    """Parameter Sensitivity Analysis - FIXED VERSION."""
+    """Parameter Sensitivity Analysis - WITH REAL MARKET DATA."""
     st.header("🎯 Sensitivity Analysis")
-    st.markdown("**Analyze how option prices and Greeks respond to parameter changes.**")
+    st.markdown("**Analyze how option prices and Greeks respond to parameter changes using real market data.**")
     
-    # Base option parameters
+    # Currency selection and real market data
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_currency = st.selectbox("Currency", ["BTC", "ETH"], key="sens_currency")
+    
+    with col2:
+        if st.button("🔄 Refresh Market Data", key="sens_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+    
+    # Get real market data
+    smart_defaults = get_smart_defaults(selected_currency)
+    display_market_data_status(selected_currency)
+    
+    # Base option parameters with real defaults
     st.subheader("🎯 Base Option Parameters")
+    st.info(f"💡 **Using real market data:** Current {selected_currency} price ${smart_defaults['spot_price']:,.0f}")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        base_spot = st.number_input("Spot Price", min_value=1000.0, value=30000.0)
-        base_strike = st.number_input("Strike Price", min_value=1000.0, value=32000.0)
+        base_spot = st.number_input(
+            f"{selected_currency} Spot Price", 
+            min_value=1000.0, 
+            value=smart_defaults['spot_price']
+        )
+        base_strike = st.number_input(
+            "Strike Price", 
+            min_value=1000.0, 
+            value=smart_defaults['strike_price']
+        )
     
     with col2:
-        base_tte = st.number_input("Days to Expiry", min_value=1, value=30)
-        base_vol = st.slider("Volatility", min_value=0.1, max_value=2.0, value=0.8)
+        base_tte = st.number_input(
+            "Days to Expiry", 
+            min_value=1, 
+            value=int(smart_defaults['time_to_expiry_days'])
+        )
+        base_vol = st.slider(
+            "Volatility", 
+            min_value=0.1, 
+            max_value=2.0, 
+            value=smart_defaults['volatility_percent']/100
+        )
     
     with col3:
         option_type = st.selectbox("Option Type", ["Call", "Put"])
@@ -2041,7 +2303,7 @@ def create_sensitivity_analysis_page():
     
     if st.button("🎯 Run Sensitivity Analysis", type="primary"):
         try:
-            with st.spinner("Running sensitivity analysis..."):
+            with st.spinner("Running sensitivity analysis with real market data..."):
                 from src.models.black_scholes import BlackScholesModel, OptionParameters, OptionType
                 
                 bs_model = BlackScholesModel()
@@ -2050,7 +2312,7 @@ def create_sensitivity_analysis_page():
                 if sensitivity_param == "Spot Price":
                     param_range = np.linspace(base_spot * (1 - range_pct/100), 
                                             base_spot * (1 + range_pct/100), points)
-                    x_label = "Spot Price"
+                    x_label = f"{selected_currency} Spot Price"
                 elif sensitivity_param == "Volatility":
                     param_range = np.linspace(base_vol * (1 - range_pct/100), 
                                             base_vol * (1 + range_pct/100), points)
@@ -2094,7 +2356,6 @@ def create_sensitivity_analysis_page():
                         option_type=OptionType.CALL if option_type == "Call" else OptionType.PUT
                     )
                     
-                    # FIXED: Use correct method name
                     price = bs_model.option_price(option_params)
                     greeks = bs_model.calculate_greeks(option_params)
                     
@@ -2145,10 +2406,10 @@ def create_sensitivity_analysis_page():
                         base_val = base_strike
                     
                     fig.add_vline(x=base_val, line_dash="dash", line_color="red", 
-                                row=i+1, col=1, annotation_text="Base")
+                                row=i+1, col=1, annotation_text="Current Market")
                 
                 fig.update_layout(
-                    title=f"Sensitivity Analysis: {sensitivity_param}",
+                    title=f"Sensitivity Analysis: {sensitivity_param} ({selected_currency})",
                     height=200 * len(metrics_to_show) + 100,
                     showlegend=False
                 )
@@ -2156,6 +2417,9 @@ def create_sensitivity_analysis_page():
                 fig.update_xaxes(title_text=x_label, row=len(metrics_to_show), col=1)
                 
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Market context
+                st.success(f"✅ **Analysis complete using real {selected_currency} market data**")
                 
                 # Sensitivity metrics
                 st.subheader("📈 Sensitivity Metrics")
@@ -2197,14 +2461,27 @@ def create_sensitivity_analysis_page():
                 # Display sensitivity table
                 sens_df = pd.DataFrame({
                     'Metric': list(sensitivity_metrics.keys()),
-                    'Base Value': [f"{v['base_value']:.4f}" for v in sensitivity_metrics.values()],
+                    'Current Value': [f"{v['base_value']:.4f}" for v in sensitivity_metrics.values()],
                     'Sensitivity': [f"{v['sensitivity']:.6f}" for v in sensitivity_metrics.values()],
                     'Min Value': [f"{v['range_low']:.4f}" for v in sensitivity_metrics.values()],
                     'Max Value': [f"{v['range_high']:.4f}" for v in sensitivity_metrics.values()],
-                    'Total Range': [f"{v['total_range']:.4f}" for v in sensitivity_metrics.values()]
+                    'Range': [f"{v['total_range']:.4f}" for v in sensitivity_metrics.values()]
                 })
                 
                 st.dataframe(sens_df, use_container_width=True)
+                
+                # Real market insights
+                st.subheader("💡 Market Insights")
+                
+                col_i1, col_i2 = st.columns(2)
+                
+                with col_i1:
+                    st.info(f"**Current {selected_currency}:** ${smart_defaults['spot_price']:,.0f}")
+                    st.info(f"**Current IV:** {smart_defaults['volatility_percent']:.0f}%")
+                
+                with col_i2:
+                    st.info(f"**ATM Strike:** ${smart_defaults['strike_price']:,.0f}")
+                    st.info(f"**Analysis Range:** ±{range_pct}% from current market")
                 
         except Exception as e:
             st.error(f"❌ Error in sensitivity analysis: {e}")
