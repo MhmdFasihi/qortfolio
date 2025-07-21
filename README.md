@@ -333,15 +333,15 @@ export MAX_WORKERS=8
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+This project is licensed under a dual-license model:
 
-- **QuantLib**: Quantitative finance library
-- **py_vollib**: Options pricing calculations
-- **Streamlit**: Dashboard framework
-- **Deribit**: Options market data
+- 🟢 **AGPLv3** for open-source use
+- 🔴 **Commercial license required** for any for-profit use
 
+If you wish to use this code in a commercial, academic, or network-facing project, you must obtain a commercial license and share benefits and attribution.
+
+📩 Contact: Mhmd Fasihi (mailto:mhmd.fasihi@gmail.com)
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/MhmdFasihi/BTC-Option_Deribit/issues)
